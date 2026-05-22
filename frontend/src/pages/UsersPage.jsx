@@ -27,19 +27,19 @@ export default function UsersPage() {
   const [createForm, setCreateForm] = useState({ dn: '', cn: '', uid: '', given_name: '', sn: '', mail: '', ci: '', cargo: '', password: '' });
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
-  const doLoad = (p) => {
+  const doLoad = (p, isAborted) => {
     setLoading(true);
     const params = { page: p, page_size: pageSize };
     if (search) params.search = search;
     if (statusFilter) params.status = statusFilter;
     userService.list(serverId, params)
-      .then(r => { setUsers(r.data.users || r.data); setTotal(r.data.total || 0); })
-      .catch(() => { setUsers([]); setTotal(0); })
-      .finally(() => setLoading(false));
+      .then(r => { if (!isAborted || !isAborted()) { setUsers(r.data.users || r.data); setTotal(r.data.total || 0); } })
+      .catch(() => { if (!isAborted || !isAborted()) { setUsers([]); setTotal(0); } })
+      .finally(() => { if (!isAborted || !isAborted()) setLoading(false); });
   };
 
-  useEffect(() => { setPage(1); doLoad(1); }, [search, statusFilter, serverId]);
-  useEffect(() => { if (page !== 1) doLoad(page); }, [page]);
+  useEffect(() => { let aborted = false; setPage(1); doLoad(1, () => aborted); return () => { aborted = true; }; }, [search, statusFilter, serverId]);
+  useEffect(() => { let aborted = false; if (page !== 1) doLoad(page, () => aborted); return () => { aborted = true; }; }, [page]);
 
   const createUser = async (e) => {
     e.preventDefault();
@@ -47,13 +47,13 @@ export default function UsersPage() {
       await userService.create(serverId, createForm);
       setShowCreate(false);
       setCreateForm({ dn: '', cn: '', uid: '', given_name: '', sn: '', mail: '', ci: '', cargo: '', password: '' });
-      doLoad(1);
+      doLoad(1, null);
     } catch (err) { alert('Error al crear usuario'); }
   };
 
-  const deleteUser = async (dn) => { if (!confirm('Eliminar usuario ' + dn + '?')) return; try { await userService.delete(serverId, dn); doLoad(page); } catch { alert('Error al eliminar'); } };
+  const deleteUser = async (dn) => { if (!confirm('Eliminar usuario ' + dn + '?')) return; try { await userService.delete(serverId, dn); doLoad(page, null); } catch { alert('Error al eliminar'); } };
   const changePassword = async (dn) => { const pw = prompt('Nueva password para:\n' + dn); if (!pw) return; try { await userService.changePassword(serverId, dn, pw); alert('Password cambiada'); } catch { alert('Error al cambiar password'); } };
-  const toggleStatus = async (dn, enabled) => { try { await userService.toggleStatus(serverId, dn, !enabled); doLoad(page); } catch { alert('Error al cambiar estado'); } };
+  const toggleStatus = async (dn, enabled) => { try { await userService.toggleStatus(serverId, dn, !enabled); doLoad(page, null); } catch { alert('Error al cambiar estado'); } };
 
   const cf = (k) => (e) => setCreateForm({ ...createForm, [k]: e.target.value });
 

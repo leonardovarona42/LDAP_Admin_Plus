@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useEffect, useState, useMemo, useCallback } from 'react';
 import { systemService } from '../services/api';
 import DynamicTable from '../components/DynamicTable';
 
@@ -28,8 +28,8 @@ export default function SystemUsersPage() {
     } catch (err) { alert('Error al guardar usuario'); }
   };
 
-  const deleteUser = async (id) => { if (!confirm('Eliminar usuario del sistema?')) return; await systemService.deleteUser(id); load(); };
-  const editUser = (u) => { setEditingUser(u); setUserForm({ username: u.username, password: '', role_id: u.role_id || '' }); };
+  const deleteUser = useCallback(async (id) => { if (!confirm('Eliminar usuario del sistema?')) return; await systemService.deleteUser(id); load(); }, []);
+  const editUser = useCallback((u) => { setEditingUser(u); setUserForm({ username: u.username, password: '', role_id: u.role_id || '' }); }, []);
 
   const saveRole = async (e) => {
     e.preventDefault();
