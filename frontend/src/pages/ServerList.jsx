@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { serverService } from '../services/api';
 import { useNavigate } from 'react-router-dom';
 import DynamicTable from '../components/DynamicTable';
@@ -29,6 +29,23 @@ export default function ServerList() {
     load();
   };
 
+  const columns = useMemo(() => [
+    { key: 'name', label: 'Nombre', defaultWidth: 200, render: (s) => <a href="#" onClick={(e) => { e.preventDefault(); navigate(`/servers/${s.id}`); }} className="text-indigo-600 hover:text-indigo-800 no-underline">{s.name}</a> },
+    { key: 'host', label: 'Host', defaultWidth: 200, render: (s) => s.host },
+    { key: 'port', label: 'Puerto', defaultWidth: 100, render: (s) => s.port },
+    { key: 'protocol', label: 'Protocolo', defaultWidth: 120, render: (s) => s.protocol },
+    { key: 'status', label: 'Estado', defaultWidth: 120, render: (s) => (
+      <span style={{
+        padding: '2px 10px', borderRadius: 10, fontSize: 13,
+        background: s.status === 'online' ? '#d4edda' : '#f8d7da',
+        color: s.status === 'online' ? '#155724' : '#721c24',
+      }}>{s.status}</span>
+    )},
+    { key: 'acciones', label: 'Acciones', defaultWidth: 120, render: (s) => (
+      <button onClick={() => remove(s.id)} style={{ background: '#dc3545', color: '#fff', border: 'none', padding: '4px 12px', borderRadius: 6, cursor: 'pointer', fontSize: 13 }}>Eliminar</button>
+    )},
+  ], [navigate, remove]);
+
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -54,22 +71,7 @@ export default function ServerList() {
         </form>
       )}
 
-      <DynamicTable columns={[
-        { key: 'name', label: 'Nombre', defaultWidth: 200, render: (s) => <a href="#" onClick={(e) => { e.preventDefault(); navigate(`/servers/${s.id}`); }} className="text-indigo-600 hover:text-indigo-800 no-underline">{s.name}</a> },
-        { key: 'host', label: 'Host', defaultWidth: 200, render: (s) => s.host },
-        { key: 'port', label: 'Puerto', defaultWidth: 100, render: (s) => s.port },
-        { key: 'protocol', label: 'Protocolo', defaultWidth: 120, render: (s) => s.protocol },
-        { key: 'status', label: 'Estado', defaultWidth: 120, render: (s) => (
-          <span style={{
-            padding: '2px 10px', borderRadius: 10, fontSize: 13,
-            background: s.status === 'online' ? '#d4edda' : '#f8d7da',
-            color: s.status === 'online' ? '#155724' : '#721c24',
-          }}>{s.status}</span>
-        )},
-        { key: 'acciones', label: 'Acciones', defaultWidth: 120, render: (s) => (
-          <button onClick={() => remove(s.id)} style={{ background: '#dc3545', color: '#fff', border: 'none', padding: '4px 12px', borderRadius: 6, cursor: 'pointer', fontSize: 13 }}>Eliminar</button>
-        )},
-      ]} data={servers} storageKey="servers-table" emptyMessage="No hay servidores" />
+      <DynamicTable columns={columns} data={servers} storageKey="servers-table" emptyMessage="No hay servidores" />
     </div>
   );
 }

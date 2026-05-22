@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { systemService } from '../services/api';
 import DynamicTable from '../components/DynamicTable';
 
@@ -97,6 +97,36 @@ export default function SystemUsersPage() {
     return found ? found.label : key;
   };
 
+  const userColumns = useMemo(() => [
+    { key: 'username', label: 'Usuario', defaultWidth: 200, render: (u) => <span className="font-medium text-slate-700">{u.username}</span> },
+    { key: 'role', label: 'Rol', defaultWidth: 200, render: (u) => u.role_name || '-' },
+    { key: 'last_login', label: 'Último acceso', defaultWidth: 200, render: (u) => u.last_login ? new Date(u.last_login).toLocaleString() : 'Nunca' },
+    { key: 'acciones', label: 'Acciones', defaultWidth: 150, render: (u) => (
+      <div className="flex gap-1">
+        <button onClick={() => editUser(u)} className={editBtn}>Editar</button>
+        <button onClick={() => deleteUser(u.id)} className={dangerBtn}>Eliminar</button>
+      </div>
+    )},
+  ], [editBtn, dangerBtn, editUser, deleteUser]);
+
+  const roleColumns = useMemo(() => [
+    { key: 'name', label: 'Nombre', defaultWidth: 200, render: (r) => <span className="font-medium text-slate-700">{r.name}</span> },
+    { key: 'permisos', label: 'Permisos', defaultWidth: 350, render: (r) => {
+      const perms = parsePerms(r.permissions);
+      return perms.includes('*')
+        ? <span className="text-indigo-600 font-medium">Todos los permisos</span>
+        : <div className="flex flex-wrap gap-1">{perms.map(k => (
+            <span key={k} className="inline-block bg-slate-100 text-slate-600 text-[11px] px-2 py-0.5 rounded-full whitespace-nowrap" title={k}>{permLabel(k)}</span>
+          ))}</div>;
+    }},
+    { key: 'acciones', label: 'Acciones', defaultWidth: 150, render: (r) => (
+      <div className="flex gap-1">
+        <button onClick={() => editRole(r)} className={editBtn}>Editar</button>
+        <button onClick={() => deleteRole(r.id)} className={dangerBtn}>Eliminar</button>
+      </div>
+    )},
+  ], [editBtn, dangerBtn, editRole, deleteRole, parsePerms, permLabel]);
+
   return (
     <div>
       <div className="mb-7">
@@ -130,17 +160,7 @@ export default function SystemUsersPage() {
               </div>
             </form>
           </div>
-          <DynamicTable columns={[
-            { key: 'username', label: 'Usuario', defaultWidth: 200, render: (u) => <span className="font-medium text-slate-700">{u.username}</span> },
-            { key: 'role', label: 'Rol', defaultWidth: 200, render: (u) => u.role_name || '-' },
-            { key: 'last_login', label: 'Último acceso', defaultWidth: 200, render: (u) => u.last_login ? new Date(u.last_login).toLocaleString() : 'Nunca' },
-            { key: 'acciones', label: 'Acciones', defaultWidth: 150, render: (u) => (
-              <div className="flex gap-1">
-                <button onClick={() => editUser(u)} className={editBtn}>Editar</button>
-                <button onClick={() => deleteUser(u.id)} className={dangerBtn}>Eliminar</button>
-              </div>
-            )},
-          ]} data={users} storageKey="system-users-table" emptyMessage="No hay usuarios del sistema" />
+          <DynamicTable columns={userColumns} data={users} storageKey="system-users-table" emptyMessage="No hay usuarios del sistema" />
         </div>
       )}
 
@@ -198,23 +218,7 @@ export default function SystemUsersPage() {
             </div>
           )}
 
-          <DynamicTable columns={[
-            { key: 'name', label: 'Nombre', defaultWidth: 200, render: (r) => <span className="font-medium text-slate-700">{r.name}</span> },
-            { key: 'permisos', label: 'Permisos', defaultWidth: 350, render: (r) => {
-              const perms = parsePerms(r.permissions);
-              return perms.includes('*')
-                ? <span className="text-indigo-600 font-medium">Todos los permisos</span>
-                : <div className="flex flex-wrap gap-1">{perms.map(k => (
-                    <span key={k} className="inline-block bg-slate-100 text-slate-600 text-[11px] px-2 py-0.5 rounded-full whitespace-nowrap" title={k}>{permLabel(k)}</span>
-                  ))}</div>;
-            }},
-            { key: 'acciones', label: 'Acciones', defaultWidth: 150, render: (r) => (
-              <div className="flex gap-1">
-                <button onClick={() => editRole(r)} className={editBtn}>Editar</button>
-                <button onClick={() => deleteRole(r.id)} className={dangerBtn}>Eliminar</button>
-              </div>
-            )},
-          ]} data={roles} storageKey="system-roles-table" emptyMessage="No hay roles" />
+          <DynamicTable columns={roleColumns} data={roles} storageKey="system-roles-table" emptyMessage="No hay roles" />
         </div>
       )}
     </div>

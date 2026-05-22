@@ -59,6 +59,9 @@ class LDAPConnectorAdapter(LDAPConnectorPort):
     def disconnect(self) -> None:
         self._proxy = None
 
+    def remove_connection(self, server_id: str) -> None:
+        self._pool.remove(server_id)
+
     def test_connection(self, server: LDAPServer) -> bool:
         proxy = ConnectionProxy(server)
         try:
@@ -69,26 +72,34 @@ class LDAPConnectorAdapter(LDAPConnectorPort):
         except LDAPProxyError:
             return False
 
+    @staticmethod
+    def _safe_attr(attrs, key, default=""):
+        vals = attrs.get(key)
+        if not vals:
+            return default
+        return vals[0]
+
     def _entry_to_user(self, entry, mappings=None) -> LDAPUser:
         m = mappings or DEFAULT_ATTRIBUTE_MAPPINGS
         attrs = entry.entry_attributes_as_dict
+        a = lambda k, fb=None, d="": self._safe_attr(attrs, m.get(k, fb or k), d)
         enabled_attr = m.get("enabled_attribute", "userAccountControl")
-        uac_vals = attrs.get(enabled_attr, None)
-        enabled = uac_vals is None or not (int(uac_vals[0]) & 2)
+        uac_val = self._safe_attr(attrs, enabled_attr, None)
+        enabled = uac_val is None or not (int(uac_val) & 2)
         return LDAPUser(
             dn=entry.entry_dn,
-            cn=attrs.get(m.get("cn", "cn"), [""])[0],
-            uid=attrs.get(m.get("uid", "uid"), [""])[0],
-            sn=attrs.get(m.get("sn", "sn"), [""])[0],
-            given_name=attrs.get(m.get("given_name", "givenName"), [""])[0],
-            mail=attrs.get(m.get("mail", "mail"), [None])[0],
-            telephone=attrs.get(m.get("telephone", "telephoneNumber"), [None])[0],
-            mobile=attrs.get(m.get("mobile", "mobile"), [None])[0],
-            department=attrs.get(m.get("department", "department"), [None])[0],
-            company=attrs.get(m.get("company", "company"), [None])[0],
-            ci=str(attrs.get(m.get("ci", "employeeID"), [None])[0]) if attrs.get(m.get("ci", "employeeID"), [None])[0] is not None else None,
-            cargo=str(attrs.get(m.get("cargo", "title"), [None])[0]) if attrs.get(m.get("cargo", "title"), [None])[0] is not None else None,
-            description=attrs.get(m.get("description", "description"), [None])[0],
+            cn=a("cn"),
+            uid=a("uid"),
+            sn=a("sn"),
+            given_name=a("given_name", "givenName"),
+            mail=a("mail", d=None),
+            telephone=a("telephone", "telephoneNumber"),
+            mobile=a("mobile", d=None),
+            department=a("department", d=None),
+            company=a("company", d=None),
+            ci=a("ci", "employeeID"),
+            cargo=a("cargo", "title"),
+            description=a("description", d=None),
             enabled=enabled,
             member_of=attrs.get(m.get("member_of", "memberOf"), []),
         )
@@ -97,8 +108,8 @@ class LDAPConnectorAdapter(LDAPConnectorPort):
         attrs = entry.entry_attributes_as_dict
         return LDAPGroup(
             dn=entry.entry_dn,
-            cn=attrs.get("cn", [""])[0],
-            description=attrs.get("description", [None])[0],
+            cn=self._safe_attr(attrs, "cn"),
+            description=self._safe_attr(attrs, "description", None),
             members=[str(m) for m in attrs.get("member", [])],
         )
 
@@ -106,8 +117,8 @@ class LDAPConnectorAdapter(LDAPConnectorPort):
         attrs = entry.entry_attributes_as_dict
         return OrganizationalUnit(
             dn=entry.entry_dn,
-            name=attrs.get("ou", [""])[0] or attrs.get("name", [""])[0],
-            description=attrs.get("description", [None])[0],
+            name=self._safe_attr(attrs, "ou") or self._safe_attr(attrs, "name"),
+            description=self._safe_attr(attrs, "description", None),
         )
 
     def search_users(self, base_dn: str, filter_str: str = "(objectClass=user)",
@@ -151,11 +162,8 @@ class LDAPConnectorAdapter(LDAPConnectorPort):
             )
             for e in entries:
                 total += 1
-                attrs = e.entry_attributes_as_dict
-                uac = attrs.get("userAccountControl", [0])[0]
-                if uac is not None and not (int(uac) & 2):
-                    enabled += 1
-                elif uac is None:
+                uac = self._safe_attr(e.entry_attributes_as_dict, "userAccountControl", None)
+                if uac is None or not (int(uac) & 2):
                     enabled += 1
             ctrl = self._proxy.last_paged_cookie
             if not ctrl:
@@ -182,10 +190,10 @@ class LDAPConnectorAdapter(LDAPConnectorPort):
             attrs = e.entry_attributes_as_dict
             result.append({
                 "dn": e.entry_dn,
-                "cn": attrs.get(m.get("computer_cn", "cn"), [""])[0],
-                "operatingSystem": attrs.get(m.get("computer_os", "operatingSystem"), [None])[0],
-                "dNSHostName": attrs.get(m.get("computer_dns_hostname", "dNSHostName"), [None])[0],
-                "description": attrs.get(m.get("computer_description", "description"), [None])[0],
+                "cn": self._safe_attr(attrs, m.get("computer_cn", "cn")),
+                "operatingSystem": self._safe_attr(attrs, m.get("computer_os", "operatingSystem"), None),
+                "dNSHostName": self._safe_attr(attrs, m.get("computer_dns_hostname", "dNSHostName"), None),
+                "description": self._safe_attr(attrs, m.get("computer_description", "description"), None),
             })
         return result
 

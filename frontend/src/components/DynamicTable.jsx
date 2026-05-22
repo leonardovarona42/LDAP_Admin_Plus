@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 
 const STORAGE_PREFIX = 'dt_';
 
@@ -24,7 +24,7 @@ function getSortValue(item, col) {
   return '';
 }
 
-export default function DynamicTable({ columns: rawColumns, data, storageKey, emptyMessage, loading, loadingRows = 5 }) {
+export default React.memo(function DynamicTable({ columns: rawColumns, data, storageKey, emptyMessage, loading, loadingRows = 5 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [sortKey, setSortKey] = useState(null);
   const [sortDir, setSortDir] = useState('asc');
@@ -55,21 +55,21 @@ export default function DynamicTable({ columns: rawColumns, data, storageKey, em
     return () => document.removeEventListener('mousedown', handler);
   }, [menuOpen]);
 
-  const visibleColumns = rawColumns.filter(c => {
+  const visibleColumns = useMemo(() => rawColumns.filter(c => {
     const st = colState.find(s => s.key === c.key);
     return st ? st.visible : true;
-  });
+  }), [rawColumns, colState]);
 
-  const colWidth = (key) => {
+  const colWidth = useCallback((key) => {
     const st = colState.find(s => s.key === key);
     return st ? st.width : 150;
-  };
+  }, [colState]);
 
-  const toggleCol = (key) => {
+  const toggleCol = useCallback((key) => {
     setColState(prev => prev.map(s => s.key === key ? { ...s, visible: !s.visible } : s));
-  };
+  }, []);
 
-  const handleSort = (key) => {
+  const handleSort = useCallback((key) => {
     setSortKey(prev => {
       if (prev === key) {
         setSortDir(d => d === 'asc' ? 'desc' : 'asc');
@@ -78,7 +78,11 @@ export default function DynamicTable({ columns: rawColumns, data, storageKey, em
       setSortDir('asc');
       return key;
     });
-  };
+  }, []);
+
+  const onResize = useCallback((key) => (w) => {
+    setColState(prev => prev.map(s => s.key === key ? { ...s, width: Math.max(60, w) } : s));
+  }, []);
 
   const sorted = useMemo(() => {
     if (!sortKey || !data.length) return data;
@@ -127,7 +131,7 @@ export default function DynamicTable({ columns: rawColumns, data, storageKey, em
                   sortable={c.sortable !== false}
                   sortKey={c.key} activeSort={sortKey} sortDir={sortDir}
                   onSort={handleSort}
-                  onResize={(w) => setColState(prev => prev.map(s => s.key === c.key ? { ...s, width: Math.max(60, w) } : s))} />
+                  onResize={onResize(c.key)} />
               ))}
             </tr>
           </thead>
@@ -163,9 +167,9 @@ export default function DynamicTable({ columns: rawColumns, data, storageKey, em
       </div>
     </div>
   );
-}
+});
 
-function ResizableTh({ label, width, onResize, sortable, sortKey, activeSort, sortDir, onSort }) {
+const ResizableTh = React.memo(({ label, width, onResize, sortable, sortKey, activeSort, sortDir, onSort }) => {
   const dragging = useRef(false);
 
   const handleMouseDown = useCallback((e) => {
@@ -217,4 +221,4 @@ function ResizableTh({ label, width, onResize, sortable, sortKey, activeSort, so
         className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-indigo-400/30 active:bg-indigo-500/50 z-10" />
     </th>
   );
-}
+});

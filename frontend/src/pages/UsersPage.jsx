@@ -1,5 +1,5 @@
 import { useParams } from 'react-router-dom';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { userService } from '../services/api';
 import { useAuth } from '../contexts/AuthContext';
 import DynamicTable from '../components/DynamicTable';
@@ -57,38 +57,40 @@ export default function UsersPage() {
 
   const cf = (k) => (e) => setCreateForm({ ...createForm, [k]: e.target.value });
 
-  const userColumns = [
-    { key: 'cn', label: 'CN', defaultWidth: 150, render: (u) => u.cn },
-    { key: 'uid', label: 'UID', defaultWidth: 150, render: (u) => u.uid },
-    { key: 'nombre', label: 'Nombre', defaultWidth: 200, render: (u) => u.displayName || u.givenName },
-    { key: 'ci', label: 'CI', defaultWidth: 150, render: (u) => <span className="font-mono text-slate-600">{u.ci || '-'}</span> },
-    { key: 'cargo', label: 'Cargo', defaultWidth: 180, render: (u) => u.cargo || '-' },
-    { key: 'mail', label: 'Email', defaultWidth: 220, render: (u) => u.mail || '-' },
-    { key: 'estado', label: 'Estado', defaultWidth: 110, render: (u) => (
-      <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-semibold ${u.enabled !== false ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
-        {u.enabled !== false ? 'Activo' : 'Inactivo'}
-      </span>
-    )},
-    { key: 'dn', label: 'DN', defaultWidth: 400, cellClass: 'font-mono text-slate-500' },
-  ];
-
-  if (canWrite) {
-    userColumns.push({
-      key: 'acciones', label: 'Acciones', defaultWidth: 220,
-      render: (u) => (
-        <div className="flex gap-1.5 flex-wrap">
-          <button onClick={() => changePassword(u.dn)}
-            className="bg-gradient-to-r from-amber-400 to-amber-500 text-slate-800 border-none px-2.5 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-all duration-200 hover:from-amber-500 hover:to-amber-600">PW</button>
-          <button onClick={() => toggleStatus(u.dn, u.enabled !== false)}
-            className={`border-none px-2.5 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-all duration-200 text-white ${u.enabled !== false ? 'bg-slate-500 hover:bg-slate-600' : 'bg-emerald-500 hover:bg-emerald-600'}`}>
-            {u.enabled !== false ? 'Desactivar' : 'Activar'}
-          </button>
-          <button onClick={() => deleteUser(u.dn)}
-            className="bg-gradient-to-r from-red-500 to-red-600 text-white border-none px-2.5 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-all duration-200 hover:from-red-600 hover:to-red-700">Eliminar</button>
-        </div>
-      ),
-    });
-  }
+  const userColumns = useMemo(() => {
+    const cols = [
+      { key: 'cn', label: 'CN', defaultWidth: 150, sortKey: 'cn', render: (u) => u.cn },
+      { key: 'uid', label: 'UID', defaultWidth: 150, sortKey: 'uid', render: (u) => u.uid },
+      { key: 'nombre', label: 'Nombre', defaultWidth: 200, render: (u) => u.displayName || u.givenName },
+      { key: 'ci', label: 'CI', defaultWidth: 150, render: (u) => <span className="font-mono text-slate-600">{u.ci || '-'}</span> },
+      { key: 'cargo', label: 'Cargo', defaultWidth: 180, render: (u) => u.cargo || '-' },
+      { key: 'mail', label: 'Email', defaultWidth: 220, render: (u) => u.mail || '-' },
+      { key: 'estado', label: 'Estado', defaultWidth: 110, render: (u) => (
+        <span className={`inline-flex px-2.5 py-1 rounded-full text-xs font-semibold ${u.enabled !== false ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
+          {u.enabled !== false ? 'Activo' : 'Inactivo'}
+        </span>
+      )},
+      { key: 'dn', label: 'DN', defaultWidth: 400, cellClass: 'font-mono text-slate-500' },
+    ];
+    if (canWrite) {
+      cols.push({
+        key: 'acciones', label: 'Acciones', defaultWidth: 220, sortable: false,
+        render: (u) => (
+          <div className="flex gap-1.5 flex-wrap">
+            <button onClick={() => changePassword(u.dn)}
+              className="bg-gradient-to-r from-amber-400 to-amber-500 text-slate-800 border-none px-2.5 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-all duration-200 hover:from-amber-500 hover:to-amber-600">PW</button>
+            <button onClick={() => toggleStatus(u.dn, u.enabled !== false)}
+              className={`border-none px-2.5 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-all duration-200 text-white ${u.enabled !== false ? 'bg-slate-500 hover:bg-slate-600' : 'bg-emerald-500 hover:bg-emerald-600'}`}>
+              {u.enabled !== false ? 'Desactivar' : 'Activar'}
+            </button>
+            <button onClick={() => deleteUser(u.dn)}
+              className="bg-gradient-to-r from-red-500 to-red-600 text-white border-none px-2.5 py-1.5 rounded-lg text-xs font-medium cursor-pointer transition-all duration-200 hover:from-red-600 hover:to-red-700">Eliminar</button>
+          </div>
+        ),
+      });
+    }
+    return cols;
+  }, [canWrite]);
 
   return (
     <div>

@@ -1,4 +1,5 @@
 import json
+import threading
 from datetime import datetime, timedelta
 
 from django.contrib.auth.models import User
@@ -23,7 +24,6 @@ from application.use_cases.manage_users import (
     SearchUsersUseCase, CreateUserUseCase, UpdateUserUseCase, DeleteUserUseCase,
 )
 from infrastructure.ldap.adapter import LDAPConnectorAdapter
-from infrastructure.ldap.pool import LDAPConnectionPool
 from infrastructure.persistence.django_repository import DjangoLDAPServerRepository
 from infrastructure.persistence.models import AuditLog, SMTPConfig, SystemRole, UserProfile, LDAPServerModel, Solicitud, AuthConfig, LDAPRoleMapping
 from interfaces.api.serializers import (
@@ -34,12 +34,13 @@ from interfaces.api.serializers import (
 )
 
 _repo = DjangoLDAPServerRepository()
-_pool = LDAPConnectionPool()
-_connector = LDAPConnectorAdapter(pool=_pool)
+_thread_local = threading.local()
 
 
 def _get_connector():
-    return _connector
+    if not hasattr(_thread_local, 'adapter'):
+        _thread_local.adapter = LDAPConnectorAdapter()
+    return _thread_local.adapter
 
 
 LDAP_CACHE_TTL = 30
@@ -153,7 +154,7 @@ class ServerDetail(APIView):
                       f"Servidor LDAP '{server.name}' eliminado", server.name)
         use_case = RemoveServerUseCase(_repo)
         use_case.execute(server_id)
-        _pool.remove(server_id)
+        _get_connector().remove_connection(server_id)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
