@@ -11,6 +11,7 @@ venv/
 media/
 staticfiles/
 backend/data/
+backend/cache/
 
 # Node
 node_modules/
