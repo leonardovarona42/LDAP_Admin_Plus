@@ -1,3 +1,4 @@
+import os
 import sys
 from pathlib import Path
 
@@ -5,11 +6,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = "django-insecure-ldap-admin-plus-secret-key-change-in-production"
+SECRET_KEY = os.environ.get("DJANGO_SECRET_KEY", "django-insecure-ldap-admin-plus-secret-key-change-in-production")
 
-DEBUG = True
+DEBUG = os.environ.get("DJANGO_DEBUG", "False") == "True"
 
-ALLOWED_HOSTS = ["*"]
+ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -74,8 +75,14 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 CACHES = {
     "default": {
-        "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
-        "LOCATION": "ldap-admin-plus-cache",
+        "BACKEND": os.environ.get(
+            "DJANGO_CACHE_BACKEND",
+            "django.core.cache.backends.filebased.FileBasedCache",
+        ),
+        "LOCATION": os.environ.get(
+            "DJANGO_CACHE_LOCATION",
+            str(BASE_DIR / "cache"),
+        ),
         "TIMEOUT": 300,
     }
 }
