@@ -21,7 +21,7 @@ export default function SolicitudesPage() {
   const [servers, setServers] = useState([]);
   const [form, setForm] = useState({
     tipo: 'ALTA', nombre: '', apellidos: '', username: '', email: '',
-    telefono: '', cargo: '', dominios: [], ou: '',
+    telefono: '', cargo: '', password: '', dominios: [], ou: '',
   });
 
   useEffect(() => {
@@ -55,7 +55,7 @@ export default function SolicitudesPage() {
   };
 
   const resetForm = () => {
-    setForm({ tipo: 'ALTA', nombre: '', apellidos: '', username: '', email: '', telefono: '', cargo: '', dominios: [], ou: '' });
+    setForm({ tipo: 'ALTA', nombre: '', apellidos: '', username: '', email: '', telefono: '', cargo: '', password: '', dominios: [], ou: '' });
     setOuFilter('');
     setOuOpen(false);
     setShowForm(false);
@@ -200,6 +200,12 @@ export default function SolicitudesPage() {
                 <label className="block text-xs font-medium text-slate-500 mb-1">Cargo</label>
                 <input value={form.cargo} onChange={cf('cargo')}
                   className="w-full px-3 py-2.5 rounded-lg border border-slate-200 text-sm outline-none focus:border-indigo-500 focus:ring-3 focus:ring-indigo-500/10" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-500 mb-1">Contraseña</label>
+                <input type="password" value={form.password} onChange={cf('password')} required={form.tipo === 'ALTA'}
+                  className="w-full px-3 py-2.5 rounded-lg border border-slate-200 text-sm outline-none focus:border-indigo-500 focus:ring-3 focus:ring-indigo-500/10" />
+                {form.tipo === 'ALTA' && <p className="text-[11px] text-slate-400 mt-0.5">Requerida para altas</p>}
               </div>
               <div ref={ouRef} className="relative">
                 <label className="block text-xs font-medium text-slate-500 mb-1">Unidad organizativa (OU)</label>

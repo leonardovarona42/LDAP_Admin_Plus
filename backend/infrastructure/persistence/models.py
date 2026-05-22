@@ -144,6 +144,7 @@ class Solicitud(models.Model):
     email = models.EmailField(max_length=255, blank=True, null=True)
     telefono = models.CharField(max_length=50, blank=True, default="")
     cargo = models.CharField(max_length=255, blank=True, default="")
+    password = models.CharField(max_length=255, blank=True, default="")
     dominios = models.JSONField(default=list)
     ou = models.CharField(max_length=512, blank=True, default="")
     estado = models.CharField(max_length=20, choices=ESTADO_CHOICES, default="PENDIENTE")

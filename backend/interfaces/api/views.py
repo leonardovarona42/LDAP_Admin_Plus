@@ -797,6 +797,7 @@ class SolicitudList(APIView):
             email=data.get("email"),
             telefono=data.get("telefono", ""),
             cargo=data.get("cargo", ""),
+            password=data.get("password", ""),
             dominios=data.get("dominios", []),
             ou=data.get("ou", ""),
         )
@@ -813,13 +814,50 @@ class SolicitudDetail(APIView):
             return Response({"error": "No encontrada"}, status=404)
         accion = request.data.get("accion", "")
         if accion == "ejecutar":
-            solicitud.estado = "EJECUTADA"
+            errores = []
+            for server_id in solicitud.dominios:
+                server_entity = _repo.find_by_id(server_id)
+                if not server_entity:
+                    errores.append(f"Servidor {server_id} no encontrado")
+                    continue
+                try:
+                    conn = _get_connector()
+                    conn.connect(server_entity)
+                    if solicitud.tipo == "ALTA":
+                        base_ou = solicitud.ou or server_entity.base_dn
+                        user_dn = f"cn={solicitud.username},{base_ou}"
+                        user = LDAPUser(
+                            dn=user_dn, cn=solicitud.nombre,
+                            uid=solicitud.username, sn=solicitud.apellidos,
+                            given_name=solicitud.nombre,
+                            mail=solicitud.email,
+                            telephone=solicitud.telefono,
+                            cargo=solicitud.cargo,
+                        )
+                        use_case = CreateUserUseCase(conn)
+                        ok = use_case.execute(user, solicitud.password)
+                        if not ok:
+                            errores.append(f"Error al crear usuario en {server_entity.name}")
+                    elif solicitud.tipo == "BAJA":
+                        base_ou = solicitud.ou or server_entity.base_dn
+                        user_dn = f"cn={solicitud.username},{base_ou}"
+                        use_case = DeleteUserUseCase(conn)
+                        ok = use_case.execute(user_dn)
+                        if not ok:
+                            errores.append(f"Error al eliminar usuario en {server_entity.name}")
+                except Exception as e:
+                    errores.append(f"{server_entity.name}: {e}")
+            solicitud.estado = "EJECUTADA" if not errores else "RECHAZADA"
             solicitud.ejecutado_por = request.user
             solicitud.ejecutado_at = timezone.now()
-            solicitud.observaciones = request.data.get("observaciones", "")
+            solicitud.observaciones = "; ".join(errores) if errores else request.data.get("observaciones", "")
             solicitud.save()
             log_audit(request.user, "UPDATE", "Solicitud", str(solicitud.id),
-                      f"Solicitud {solicitud.get_tipo_display()} ejecutada: {solicitud.nombre} {solicitud.apellidos}")
+                      f"Solicitud {solicitud.get_tipo_display()} ejecutada: {solicitud.nombre} {solicitud.apellidos}" +
+                      (f" Errores: {errores}" if errores else ""))
+            if errores:
+                return Response({"error": "Errores al ejecutar", "detalles": errores,
+                                 "solicitud": SolicitudSerializer(solicitud).data}, status=500)
         elif accion == "rechazar":
             solicitud.estado = "RECHAZADA"
             solicitud.observaciones = request.data.get("observaciones", "")

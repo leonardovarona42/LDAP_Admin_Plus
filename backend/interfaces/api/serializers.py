@@ -137,6 +137,7 @@ class SolicitudSerializer(serializers.Serializer):
     email = serializers.EmailField(allow_null=True, required=False)
     telefono = serializers.CharField(allow_blank=True, required=False, default="")
     cargo = serializers.CharField(allow_blank=True, required=False, default="")
+    password = serializers.CharField(write_only=True, required=False, allow_blank=True, default="")
     dominios = serializers.JSONField(default=list)
     ou = serializers.CharField(allow_blank=True, required=False, default="")
     estado = serializers.ChoiceField(choices=["PENDIENTE", "EJECUTADA", "RECHAZADA"], read_only=True)
