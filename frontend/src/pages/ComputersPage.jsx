@@ -15,11 +15,13 @@ export default function ComputersPage() {
   const { serverId } = useParams();
   const [computers, setComputers] = useState([]);
   const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(false);
 
   const load = () => {
+    setLoading(true);
     const params = {};
     if (search) params.search = search;
-    computerService.list(serverId, params).then(r => setComputers(r.data)).catch(() => {});
+    computerService.list(serverId, params).then(r => setComputers(r.data)).catch(() => {}).finally(() => setLoading(false));
   };
 
   useEffect(() => { load(); }, [search]);
@@ -34,7 +36,7 @@ export default function ComputersPage() {
       <input placeholder="Buscar por nombre..." value={search} onChange={e => setSearch(e.target.value)}
         className="px-3.5 py-2.5 rounded-lg border border-slate-200 text-sm outline-none focus:border-indigo-500 focus:ring-3 focus:ring-indigo-500/10 min-w-[350px] mb-5" />
 
-      <DynamicTable columns={columns} data={computers} storageKey="computers-table" emptyMessage="No se encontraron computadoras" />
+      <DynamicTable columns={columns} data={computers} loading={loading} storageKey="computers-table" emptyMessage="No se encontraron computadoras" />
     </div>
   );
 }

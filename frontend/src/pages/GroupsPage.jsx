@@ -15,9 +15,11 @@ const columns = [
 export default function GroupsPage() {
   const { serverId } = useParams();
   const [groups, setGroups] = useState([]);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    groupService.list(serverId, '').then(r => setGroups(r.data)).catch(() => {});
+    setLoading(true);
+    groupService.list(serverId, '').then(r => setGroups(r.data)).catch(() => {}).finally(() => setLoading(false));
   }, []);
 
   return (
@@ -26,7 +28,7 @@ export default function GroupsPage() {
         <h1 className="text-[26px] font-bold text-slate-800 m-0 mb-1">Grupos</h1>
         <p className="text-slate-500 text-sm m-0">Grupos LDAP del directorio</p>
       </div>
-      <DynamicTable columns={columns} data={groups} storageKey="groups-table" emptyMessage="No se encontraron grupos" />
+      <DynamicTable columns={columns} data={groups} loading={loading} storageKey="groups-table" emptyMessage="No se encontraron grupos" />
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 
 const STORAGE_PREFIX = 'dt_';
 
@@ -13,8 +13,21 @@ function saveState(key, state) {
   try { localStorage.setItem(STORAGE_PREFIX + key, JSON.stringify(state)); } catch {}
 }
 
+function getSortValue(item, col) {
+  if (col.sortKey) return item[col.sortKey];
+  if (item[col.key] != null) return item[col.key];
+  if (col.render) {
+    const v = col.render(item);
+    if (typeof v === 'string') return v;
+    if (v?.props?.children) return String(v.props.children);
+  }
+  return '';
+}
+
 export default function DynamicTable({ columns: rawColumns, data, storageKey, emptyMessage, loading, loadingRows = 5 }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [sortKey, setSortKey] = useState(null);
+  const [sortDir, setSortDir] = useState('asc');
   const menuRef = useRef(null);
 
   const saved = storageKey ? loadState(storageKey) : null;
@@ -56,6 +69,33 @@ export default function DynamicTable({ columns: rawColumns, data, storageKey, em
     setColState(prev => prev.map(s => s.key === key ? { ...s, visible: !s.visible } : s));
   };
 
+  const handleSort = (key) => {
+    setSortKey(prev => {
+      if (prev === key) {
+        setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+        return key;
+      }
+      setSortDir('asc');
+      return key;
+    });
+  };
+
+  const sorted = useMemo(() => {
+    if (!sortKey || !data.length) return data;
+    const col = rawColumns.find(c => c.key === sortKey);
+    if (!col || col.sortable === false) return data;
+    const sortedData = [...data];
+    sortedData.sort((a, b) => {
+      const va = getSortValue(a, col);
+      const vb = getSortValue(b, col);
+      if (va == null) return 1;
+      if (vb == null) return -1;
+      const cmp = String(va).localeCompare(String(vb), 'es', { sensitivity: 'base' });
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+    return sortedData;
+  }, [data, sortKey, sortDir, rawColumns]);
+
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm">
       <div className="flex justify-end px-4 pt-3 pb-0 relative" ref={menuRef}>
@@ -84,6 +124,9 @@ export default function DynamicTable({ columns: rawColumns, data, storageKey, em
             <tr className="bg-slate-50">
               {visibleColumns.map(c => (
                 <ResizableTh key={c.key} label={c.label} width={colWidth(c.key)}
+                  sortable={c.sortable !== false}
+                  sortKey={c.key} activeSort={sortKey} sortDir={sortDir}
+                  onSort={handleSort}
                   onResize={(w) => setColState(prev => prev.map(s => s.key === c.key ? { ...s, width: Math.max(60, w) } : s))} />
               ))}
             </tr>
@@ -98,14 +141,14 @@ export default function DynamicTable({ columns: rawColumns, data, storageKey, em
                 ))}
               </tr>
             ))}
-            {!loading && data.length === 0 && (
+            {!loading && sorted.length === 0 && (
               <tr>
                 <td colSpan={visibleColumns.length} className="px-4 py-12 text-center text-slate-400 text-sm">
                   {emptyMessage || 'No hay datos'}
                 </td>
               </tr>
             )}
-            {!loading && data.length > 0 && data.map((item, i) => (
+            {!loading && sorted.length > 0 && sorted.map((item, i) => (
               <tr key={item._key || i} className="border-t border-slate-100 transition-colors hover:bg-slate-50">
                 {visibleColumns.map(c => (
                   <td key={c.key} className={`px-4 py-3 text-sm truncate ${c.cellClass || 'text-slate-700'}`}
@@ -122,7 +165,7 @@ export default function DynamicTable({ columns: rawColumns, data, storageKey, em
   );
 }
 
-function ResizableTh({ label, width, onResize }) {
+function ResizableTh({ label, width, onResize, sortable, sortKey, activeSort, sortDir, onSort }) {
   const dragging = useRef(false);
 
   const handleMouseDown = useCallback((e) => {
@@ -152,10 +195,24 @@ function ResizableTh({ label, width, onResize }) {
     document.body.style.userSelect = 'none';
   }, [width, onResize]);
 
+  const isActive = sortKey === activeSort;
+
   return (
-    <th className="text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 relative select-none"
-      style={{ width, minWidth: width, maxWidth: width }}>
-      <span className="truncate block">{label}</span>
+    <th className={`text-left px-4 py-3 text-xs font-semibold uppercase tracking-wider text-slate-500 relative select-none ${sortable ? 'cursor-pointer hover:text-slate-700' : ''}`}
+      style={{ width, minWidth: width, maxWidth: width }}
+      onClick={sortable ? () => onSort(sortKey) : undefined}>
+      <span className="truncate block">
+        {label}
+        {isActive && (
+          <svg className="inline-block ml-1 -mt-0.5" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            {sortDir === 'asc' ? (
+              <polyline points="18 15 12 9 6 15" />
+            ) : (
+              <polyline points="6 9 12 15 18 9" />
+            )}
+          </svg>
+        )}
+      </span>
       <div onMouseDown={handleMouseDown}
         className="absolute right-0 top-0 bottom-0 w-1.5 cursor-col-resize hover:bg-indigo-400/30 active:bg-indigo-500/50 z-10" />
     </th>

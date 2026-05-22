@@ -12,9 +12,11 @@ const columns = [
 export default function OUsPage() {
   const { serverId } = useParams();
   const [ous, setOus] = useState([]);
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    ouService.list(serverId, '').then(r => setOus(r.data)).catch(() => {});
+    setLoading(true);
+    ouService.list(serverId, '').then(r => setOus(r.data)).catch(() => {}).finally(() => setLoading(false));
   }, []);
 
   return (
@@ -23,7 +25,7 @@ export default function OUsPage() {
         <h1 className="text-[26px] font-bold text-slate-800 m-0 mb-1">Unidades Organizativas</h1>
         <p className="text-slate-500 text-sm m-0">OU del directorio LDAP</p>
       </div>
-      <DynamicTable columns={columns} data={ous} storageKey="ous-table" emptyMessage="No se encontraron OU" />
+      <DynamicTable columns={columns} data={ous} loading={loading} storageKey="ous-table" emptyMessage="No se encontraron OU" />
     </div>
   );
 }
