@@ -1,0 +1,41 @@
+@startuml CasosDeUso
+left to right direction
+skinparam packageStyle rectangle
+actor "Tecnico de Soporte" as TS
+actor "Administrador de Red" as AR
+
+rectangle "LDAP Admin+" {
+  usecase "Autenticarse en el sistema" as UC1
+  usecase "Gestionar servidores LDAP/AD" as UC2
+  usecase "Conectar/Desconectar servidor" as UC3
+  usecase "Gestionar usuarios LDAP" as UC4
+  usecase "Gestionar grupos LDAP" as UC5
+  usecase "Gestionar OU" as UC6
+  usecase "Cambiar contrasena" as UC7
+  usecase "Habilitar/Deshabilitar" as UC8
+  usecase "Buscar y filtrar" as UC9
+  usecase "Exportar reportes" as UC10
+  usecase "Multiples servidores" as UC11
+  usecase "Configurar LDAP/LDAPS" as UC12
+}
+
+TS --> UC1
+TS --> UC2
+TS --> UC3
+TS --> UC4
+TS --> UC5
+TS --> UC7
+TS --> UC9
+
+AR --> UC1
+AR --> UC2
+AR --> UC3
+AR --> UC4
+AR --> UC6
+AR --> UC8
+AR --> UC10
+AR --> UC11
+AR --> UC12
+
+UC4 ..> UC7 : <<include>>
+@enduml
