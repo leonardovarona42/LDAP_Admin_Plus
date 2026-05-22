@@ -40,7 +40,7 @@ def _ldap_authenticate(username, password):
             return None
         bind_dn = template.replace("{username}", username)
         server = Server(srv.host, port=srv.port, use_ssl=srv.protocol == "ldaps", connect_timeout=10)
-        conn = Connection(server, user=bind_dn, password=password, auto_bind=True, raise_exceptions=True)
+        conn = Connection(server, user=bind_dn, password=password, auto_bind=True, raise_exceptions=True, receive_timeout=10)
     except Exception:
         return None
 

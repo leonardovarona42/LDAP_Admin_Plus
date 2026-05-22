@@ -39,6 +39,7 @@ class ConnectionProxy:
                 auto_bind=True,
                 version=self._server.version,
                 raise_exceptions=True,
+                receive_timeout=10,
             )
             if self._server.use_tls and not use_ssl:
                 self._connection.start_tls()
@@ -69,10 +70,12 @@ class ConnectionProxy:
         if not self._connection or not self._connection.bound:
             return False
         try:
-            return self._connection.search(
+            self._connection.search(
                 search_base="", search_filter="(objectClass=*)",
                 search_scope="BASE", attributes=["1.1"], size_limit=1,
+                time_limit=5,
             )
+            return True
         except LDAPException:
             return False
 
