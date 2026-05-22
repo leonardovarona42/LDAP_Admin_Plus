@@ -1,6 +1,5 @@
 from typing import Optional
-import ldap3
-from ldap3 import SUBTREE, ALL_ATTRIBUTES, MODIFY_REPLACE
+from ldap3 import SUBTREE, MODIFY_REPLACE
 
 from domain.ports.ldap_connector import LDAPConnectorPort
 from domain.entities.ldap_server import LDAPServer, ServerStatus, DEFAULT_ATTRIBUTE_MAPPINGS
@@ -9,6 +8,37 @@ from domain.entities.group import LDAPGroup
 from domain.entities.ou import OrganizationalUnit
 from infrastructure.ldap.proxy import ConnectionProxy, LDAPProxyError
 from infrastructure.ldap.pool import LDAPConnectionPool
+
+LDAP_PAGE_SIZE = 1000
+
+USER_ATTRS = [
+    "cn", "uid", "sn", "givenName", "mail",
+    "telephoneNumber", "mobile", "department", "company",
+    "employeeID", "title", "description",
+    "userAccountControl", "memberOf",
+]
+GROUP_ATTRS = ["cn", "description", "member"]
+OU_ATTRS = ["ou", "name", "description"]
+COMPUTER_ATTRS = ["cn", "operatingSystem", "dNSHostName", "description"]
+
+
+def _paged_search(proxy, base_dn, filter_str, attributes, search_scope=SUBTREE):
+    """Realiza busqueda paginada acumulando todas las paginas."""
+    all_entries = []
+    cookie = None
+    while True:
+        entries = proxy.search(
+            base_dn, filter_str,
+            attributes=attributes,
+            search_scope=search_scope,
+            paged_size=LDAP_PAGE_SIZE,
+            paged_cookie=cookie,
+        )
+        all_entries.extend(entries)
+        cookie = proxy.last_paged_cookie
+        if not cookie:
+            break
+    return all_entries
 
 
 class LDAPConnectorAdapter(LDAPConnectorPort):
@@ -61,7 +91,6 @@ class LDAPConnectorAdapter(LDAPConnectorPort):
             description=attrs.get(m.get("description", "description"), [None])[0],
             enabled=enabled,
             member_of=attrs.get(m.get("member_of", "memberOf"), []),
-            attributes={k: [str(v) for v in vals] for k, vals in attrs.items()},
         )
 
     def _entry_to_group(self, entry) -> LDAPGroup:
@@ -85,22 +114,23 @@ class LDAPConnectorAdapter(LDAPConnectorPort):
                      attribute_mappings: Optional[dict] = None) -> list[LDAPUser]:
         if not self._proxy:
             raise LDAPProxyError("Not connected")
-        entries = self._proxy.search(base_dn, filter_str, search_scope=SUBTREE)
+        entries = _paged_search(self._proxy, base_dn, filter_str, USER_ATTRS)
         m = attribute_mappings or DEFAULT_ATTRIBUTE_MAPPINGS
         return [self._entry_to_user(e, m) for e in entries]
 
     def search_groups(self, base_dn: str, filter_str: str = "(objectClass=group)") -> list[LDAPGroup]:
         if not self._proxy:
             raise LDAPProxyError("Not connected")
-        entries = self._proxy.search(base_dn, filter_str, search_scope=SUBTREE)
+        entries = _paged_search(self._proxy, base_dn, filter_str, GROUP_ATTRS)
         return [self._entry_to_group(e) for e in entries]
 
     def search_ous(self, base_dn: str) -> list[OrganizationalUnit]:
         if not self._proxy:
             raise LDAPProxyError("Not connected")
-        entries = self._proxy.search(
-            base_dn, "(|(objectClass=organizationalUnit)(objectClass=container))",
-            search_scope=SUBTREE
+        entries = _paged_search(
+            self._proxy, base_dn,
+            "(|(objectClass=organizationalUnit)(objectClass=container))",
+            OU_ATTRS,
         )
         return [self._entry_to_ou(e) for e in entries]
 
@@ -116,7 +146,7 @@ class LDAPConnectorAdapter(LDAPConnectorPort):
                 base_dn, filter_str,
                 attributes=["userAccountControl"],
                 search_scope=SUBTREE,
-                paged_size=1000,
+                paged_size=LDAP_PAGE_SIZE,
                 paged_cookie=cookie,
             )
             for e in entries:
@@ -127,7 +157,6 @@ class LDAPConnectorAdapter(LDAPConnectorPort):
                     enabled += 1
                 elif uac is None:
                     enabled += 1
-            # Check for next page
             ctrl = self._proxy.last_paged_cookie
             if not ctrl:
                 break
@@ -137,7 +166,8 @@ class LDAPConnectorAdapter(LDAPConnectorPort):
     def get_user(self, dn: str, attribute_mappings: Optional[dict] = None) -> Optional[LDAPUser]:
         if not self._proxy:
             raise LDAPProxyError("Not connected")
-        entries = self._proxy.search(dn, "(objectClass=user)", search_scope=SUBTREE)
+        entries = self._proxy.search(dn, "(objectClass=user)",
+                                     attributes=USER_ATTRS, search_scope=SUBTREE)
         m = attribute_mappings or DEFAULT_ATTRIBUTE_MAPPINGS
         return self._entry_to_user(entries[0], m) if entries else None
 
@@ -145,7 +175,7 @@ class LDAPConnectorAdapter(LDAPConnectorPort):
                          attribute_mappings: Optional[dict] = None) -> list[dict]:
         if not self._proxy:
             raise LDAPProxyError("Not connected")
-        entries = self._proxy.search(base_dn, filter_str, search_scope=SUBTREE)
+        entries = _paged_search(self._proxy, base_dn, filter_str, COMPUTER_ATTRS)
         m = attribute_mappings or DEFAULT_ATTRIBUTE_MAPPINGS
         result = []
         for e in entries:
