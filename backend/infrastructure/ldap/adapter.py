@@ -1,5 +1,5 @@
 from typing import Optional
-from ldap3 import SUBTREE, MODIFY_REPLACE
+from ldap3 import SUBTREE, MODIFY_REPLACE, MODIFY_ADD, MODIFY_DELETE
 
 from domain.ports.ldap_connector import LDAPConnectorPort
 from domain.entities.ldap_server import LDAPServer, ServerStatus, DEFAULT_ATTRIBUTE_MAPPINGS
@@ -261,12 +261,12 @@ class LDAPConnectorAdapter(LDAPConnectorPort):
     def add_member_to_group(self, group_dn: str, member_dn: str) -> bool:
         if not self._proxy:
             raise LDAPProxyError("Not connected")
-        return self._proxy.modify(group_dn, {"member": [(MODIFY_REPLACE, [member_dn])]})
+        return self._proxy.modify(group_dn, {"member": [(MODIFY_ADD, [member_dn])]})
 
     def remove_member_from_group(self, group_dn: str, member_dn: str) -> bool:
         if not self._proxy:
             raise LDAPProxyError("Not connected")
-        return self._proxy.modify(group_dn, {"member": [(MODIFY_REPLACE, [])]})
+        return self._proxy.modify(group_dn, {"member": [(MODIFY_DELETE, [member_dn])]})
 
     def change_password(self, dn: str, new_password: str) -> bool:
         if not self._proxy:
