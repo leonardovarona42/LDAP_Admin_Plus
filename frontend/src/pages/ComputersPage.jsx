@@ -15,7 +15,7 @@ export default function ComputersPage() {
   const { serverId } = useParams();
   const [computers, setComputers] = useState([]);
   const [search, setSearch] = useState('');
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   const load = () => {
     setLoading(true);

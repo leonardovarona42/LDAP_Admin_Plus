@@ -15,7 +15,7 @@ const columns = [
 export default function GroupsPage() {
   const { serverId } = useParams();
   const [groups, setGroups] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     setLoading(true);

@@ -12,7 +12,7 @@ const columns = [
 export default function OUsPage() {
   const { serverId } = useParams();
   const [ous, setOus] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     setLoading(true);
