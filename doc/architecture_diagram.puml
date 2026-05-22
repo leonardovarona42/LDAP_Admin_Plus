@@ -1,0 +1,42 @@
+@startuml ArquitecturaHexagonal
+skinparam componentStyle rectangle
+
+package "Interfaces (Driving)" {
+  [Frontend React + Vite] as FE
+  [API REST Django DRF] as API
+}
+
+package "Aplicacion" {
+  [Casos de Uso] as UC
+}
+
+package "Dominio" {
+  [Entidades y Puertos] as DOM
+  interface "LDAPServerRepository" as REPO_IF
+  interface "LDAPConnectorPort" as CONN_IF
+}
+
+package "Infraestructura (Driven)" {
+  [Repositorio Django + SQLite] as REPO
+  [LDAPConnectorAdapter] as ADAPTER
+  [Proxy LDAP\nConnectionProxy + Pool] as PROXY
+}
+
+package "Externo" {
+  [LDAP Server] as LDAP1
+  [Active Directory] as AD1
+  [LDAPS Server] as LDAP2
+}
+
+FE --> API : HTTP REST
+API --> UC : llama
+UC --> DOM : usa
+DOM --> REPO_IF : <<interface>>
+DOM --> CONN_IF : <<interface>>
+REPO_IF ..|> REPO
+CONN_IF ..|> ADAPTER
+ADAPTER --> PROXY : delega
+PROXY --> LDAP1
+PROXY --> AD1
+PROXY --> LDAP2
+@enduml

@@ -1,0 +1,46 @@
+@startuml EntidadRelacion
+!define table(x) class x << (T,#FFAAAA) >>
+!define primary_key(x) <u>x</u>
+!define foreign_key(x) <i><color:blue>x</color></i>
+
+hide circle
+skinparam classAttributeIconSize 0
+
+table(LDAPServer) {
+  <primary_key>id</primary_key> : UUID
+  name : VARCHAR(255)
+  host : VARCHAR(255)
+  port : INTEGER
+  protocol : ENUM(ldap|ldaps)
+  base_dn : VARCHAR(512)
+  bind_dn : VARCHAR(512)
+  bind_password : TEXT
+  timeout : INTEGER
+  use_tls : BOOLEAN
+}
+
+table(User) {
+  <primary_key>id</primary_key> : INTEGER
+  username : VARCHAR(150)
+  password : VARCHAR(128)
+  email : VARCHAR(254)
+  is_staff : BOOLEAN
+}
+
+table(Session) {
+  <primary_key>session_key</primary_key> : VARCHAR(40)
+  session_data : TEXT
+  expire_date : DATETIME
+  <foreign_key>user_id</foreign_key> : INTEGER
+}
+
+table(UserServerAccess) {
+  <primary_key>id</primary_key> : INTEGER
+  <foreign_key>user_id</foreign_key> : INTEGER
+  <foreign_key>server_id</foreign_key> : VARCHAR(64)
+}
+
+User ||--o{ Session : tiene
+User }o--o{ UserServerAccess : accede
+LDAPServer }o--o{ UserServerAccess : gestiona
+@enduml

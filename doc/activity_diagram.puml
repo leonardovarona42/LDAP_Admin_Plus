@@ -1,0 +1,20 @@
+@startuml RegistrarServidor
+start
+:Ingresar datos del servidor LDAP;
+:Validar formato de datos;
+if () then ([invalido])
+  :Mostrar error de validacion;
+  #LightPink:Volver a ingresar;
+else ([valido])
+  :Probar conexion (Proxy);
+  if () then ([fallo])
+    :Mostrar error de conexion;
+    #LightPink:Volver a ingresar;
+  else ([exito])
+    :Guardar servidor en BD (repositorio);
+    :Agregar al pool de conexiones;
+    :Servidor listo para gestionar;
+    stop
+  endif
+endif
+@enduml
