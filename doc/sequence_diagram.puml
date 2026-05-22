@@ -1,0 +1,16 @@
+@startuml CrearUsuario
+actor "Tecnico" as T
+participant "Frontend React" as FE
+participant "API REST Django" as API
+participant "Proxy LDAP" as PROXY
+database "Directorio Activo" as AD
+
+T -> FE: POST /servers/{id}/users/
+FE -> API: POST /servers/{id}/users/
+API -> PROXY: CreateUserUseCase.execute()
+PROXY -> AD: proxy.add(dn, classes, attrs)
+AD --> PROXY: Resultado OK
+PROXY --> API: Response 201 Created
+API --> FE: JSON con usuario creado
+FE --> T: Muestra resultado en pantalla
+@enduml

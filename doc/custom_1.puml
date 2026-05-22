@@ -1,0 +1,6 @@
+@startuml CustomDiagram
+title crea todos los diagramas de ingenieria de software usados po
+actor "User" as U
+usecase "Feature" as F
+U --> F
+@enduml

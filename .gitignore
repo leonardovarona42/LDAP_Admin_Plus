@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+venv/
+.env
+
+# Django
+*.db
+*.sqlite3
+media/
+staticfiles/
+backend/data/
+
+# Node
+node_modules/
+.vite/
+frontend/dist/
+frontend/.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Docker
+.docker/
+*.vpp
+*.vpp.bak_*
+
+# Logs
+*.log
