@@ -1,10 +1,12 @@
 import json
-import threading
 from datetime import datetime, timedelta
 
 from django.contrib.auth.models import User
 from django.db.models import Count
 from django.utils import timezone
+from django.core.cache import cache
+
+AUTH_CACHE_KEY = "auth_config"
 
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -21,6 +23,7 @@ from application.use_cases.manage_users import (
     SearchUsersUseCase, CreateUserUseCase, UpdateUserUseCase, DeleteUserUseCase,
 )
 from infrastructure.ldap.adapter import LDAPConnectorAdapter
+from infrastructure.ldap.pool import LDAPConnectionPool
 from infrastructure.persistence.django_repository import DjangoLDAPServerRepository
 from infrastructure.persistence.models import AuditLog, SMTPConfig, SystemRole, UserProfile, LDAPServerModel, Solicitud, AuthConfig, LDAPRoleMapping
 from interfaces.api.serializers import (
@@ -31,13 +34,37 @@ from interfaces.api.serializers import (
 )
 
 _repo = DjangoLDAPServerRepository()
-_thread_local = threading.local()
+_pool = LDAPConnectionPool()
+_connector = LDAPConnectorAdapter(pool=_pool)
 
 
 def _get_connector():
-    if not hasattr(_thread_local, 'connector'):
-        _thread_local.connector = LDAPConnectorAdapter()
-    return _thread_local.connector
+    return _connector
+
+
+LDAP_CACHE_TTL = 30
+
+
+def _cache_key(prefix, server_id, *args):
+    return f"ldap:{prefix}:{server_id}:" + ":".join(str(a) for a in args if a)
+
+
+def _get_cached_or_fetch(key, fetch_fn, ttl=LDAP_CACHE_TTL):
+    result = cache.get(key)
+    if result is None:
+        result = fetch_fn()
+        cache.set(key, result, ttl)
+    return result
+
+
+def _build_search_filter(term, fields=None):
+    """Construye un filter LDAP para busqueda sobre multiples campos."""
+    if not term:
+        return None
+    fields = fields or ["cn", "uid", "sn", "givenName", "mail"]
+    escaped = term.replace("\\", "\\\\").replace("*", "\\*").replace("(", "\\(").replace(")", "\\)")
+    clauses = [f"({f}=*{escaped}*)" for f in fields]
+    return "(|" + "".join(clauses) + ")"
 
 
 # -- Helper: registrar auditoria --
@@ -126,7 +153,7 @@ class ServerDetail(APIView):
                       f"Servidor LDAP '{server.name}' eliminado", server.name)
         use_case = RemoveServerUseCase(_repo)
         use_case.execute(server_id)
-        _get_connector().disconnect()
+        _pool.remove(server_id)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -163,18 +190,22 @@ class ServerStats(APIView):
         server = _repo.find_by_id(server_id)
         if not server:
             return Response({"error": "Server not found"}, status=status.HTTP_404_NOT_FOUND)
-        _get_connector().connect(server)
-        try:
-            base_dn = server.base_dn
-            am = server.attribute_mappings
-            return Response({
-                "users": self._count(_get_connector().search_users, base_dn, "(objectClass=user)", am),
-                "groups": self._count(_get_connector().search_groups, base_dn),
-                "ous": self._count(_get_connector().search_ous, base_dn),
-                "computers": self._count(_get_connector().search_computers, base_dn, "(objectClass=computer)", am),
-            })
-        finally:
-            _get_connector().disconnect()
+        cache_key = _cache_key("stats", server_id)
+        result = cache.get(cache_key)
+        if result is not None:
+            return Response(result)
+        conn = _get_connector()
+        conn.connect(server)
+        base_dn = server.base_dn
+        am = server.attribute_mappings
+        result = {
+            "users": self._count(conn.search_users, base_dn, "(objectClass=user)", am),
+            "groups": self._count(conn.search_groups, base_dn),
+            "ous": self._count(conn.search_ous, base_dn),
+            "computers": self._count(conn.search_computers, base_dn, "(objectClass=computer)", am),
+        }
+        cache.set(cache_key, result, LDAP_CACHE_TTL)
+        return Response(result)
 
 
 class TestConnection(APIView):
@@ -210,18 +241,17 @@ class UserList(APIView):
         page = int(request.query_params.get("page", 1))
         page_size = int(request.query_params.get("page_size", 50))
 
-        _get_connector().connect(server)
+        if search:
+            sf = _build_search_filter(search)
+            if sf:
+                filter_str = f"(&{filter_str}{sf})"
+
+        conn = _get_connector()
+        conn.connect(server)
         try:
             mappings = server.attribute_mappings if server else None
-            use_case = SearchUsersUseCase(_get_connector())
+            use_case = SearchUsersUseCase(conn)
             users = use_case.execute(base_dn, filter_str, mappings)
-
-            if search:
-                search_lower = search.lower()
-                users = [u for u in users if search_lower in u.cn.lower()
-                         or search_lower in u.uid.lower()
-                         or search_lower in u.given_name.lower()
-                         or (u.mail and search_lower in u.mail.lower())]
 
             if status_filter == "enabled":
                 users = [u for u in users if u.enabled]
@@ -241,7 +271,7 @@ class UserList(APIView):
                 "page_size": page_size,
             })
         finally:
-            _get_connector().disconnect()
+            pass
 
     def post(self, request, server_id):
         server = _repo.find_by_id(server_id)
@@ -255,12 +285,10 @@ class UserList(APIView):
             given_name=data["given_name"], mail=data.get("mail"),
             ci=data.get("ci"), cargo=data.get("cargo"),
         )
-        _get_connector().connect(server)
-        try:
-            use_case = CreateUserUseCase(_get_connector())
-            ok = use_case.execute(user, data["password"])
-        finally:
-            _get_connector().disconnect()
+        conn = _get_connector()
+        conn.connect(server)
+        use_case = CreateUserUseCase(conn)
+        ok = use_case.execute(user, data["password"])
         name = server.name
         log_audit(request.user, "CREATE", "LDAPUser", data["dn"],
                   f"Usuario '{data['uid']}' creado en {name}", name, ok)
@@ -279,24 +307,20 @@ class UserDetail(APIView):
             dn=dn, cn=data.get("cn", ""), uid=data.get("uid", ""),
             sn=data.get("sn", ""), given_name=data.get("givenName", ""),
         )
-        _get_connector().connect(server)
-        try:
-            use_case = UpdateUserUseCase(_get_connector())
-            ok = use_case.execute(user)
-            return Response({"updated": ok})
-        finally:
-            _get_connector().disconnect()
+        conn = _get_connector()
+        conn.connect(server)
+        use_case = UpdateUserUseCase(conn)
+        ok = use_case.execute(user)
+        return Response({"updated": ok})
 
     def delete(self, request, server_id, dn):
         server = _repo.find_by_id(server_id)
         if not server:
             return Response({"error": "Server not found"}, status=status.HTTP_404_NOT_FOUND)
-        _get_connector().connect(server)
-        try:
-            use_case = DeleteUserUseCase(_get_connector())
-            ok = use_case.execute(dn)
-        finally:
-            _get_connector().disconnect()
+        conn = _get_connector()
+        conn.connect(server)
+        use_case = DeleteUserUseCase(conn)
+        ok = use_case.execute(dn)
         name = server.name
         log_audit(request.user, "DELETE", "LDAPUser", dn,
                   f"Usuario '{dn}' eliminado de {name}", name, ok)
@@ -311,13 +335,12 @@ class UserPasswordChange(APIView):
         serializer = ChangePasswordSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         new_password = serializer.validated_data["new_password"]
-        _get_connector().connect(server)
+        conn = _get_connector()
+        conn.connect(server)
         try:
-            ok = _get_connector().change_password(dn, new_password)
+            ok = conn.change_password(dn, new_password)
         except Exception:
             ok = False
-        finally:
-            _get_connector().disconnect()
         log_audit(request.user, "PASSWORD_CHANGE", "LDAPUser", dn,
                   f"Cambio contrasenia para '{dn}' en {server.name}", server.name, ok)
         return Response({"changed": ok})
@@ -329,16 +352,14 @@ class UserToggleStatus(APIView):
         if not server:
             return Response({"error": "Server not found"}, status=status.HTTP_404_NOT_FOUND)
         enable = request.data.get("enable", True)
-        _get_connector().connect(server)
-        try:
-            if enable:
-                ok = _get_connector().enable_user(dn)
-                action = "USER_ENABLE"
-            else:
-                ok = _get_connector().disable_user(dn)
-                action = "USER_DISABLE"
-        finally:
-            _get_connector().disconnect()
+        conn = _get_connector()
+        conn.connect(server)
+        if enable:
+            ok = conn.enable_user(dn)
+            action = "USER_ENABLE"
+        else:
+            ok = conn.disable_user(dn)
+            action = "USER_DISABLE"
         log_audit(request.user, action, "LDAPUser", dn,
                   f"{'Habilitado' if enable else 'Deshabilitado'} '{dn}' en {server.name}", server.name, ok)
         return Response({"success": ok})
@@ -354,13 +375,11 @@ class ComputerList(APIView):
             base_dn = server.base_dn
         if not server:
             return Response({"error": "Server not found"}, status=status.HTTP_404_NOT_FOUND)
-        _get_connector().connect(server)
-        try:
-            mappings = server.attribute_mappings if server else None
-            computers = _get_connector().search_computers(base_dn, "(objectClass=computer)", mappings)
-            return Response(computers)
-        finally:
-            _get_connector().disconnect()
+        conn = _get_connector()
+        conn.connect(server)
+        mappings = server.attribute_mappings if server else None
+        computers = conn.search_computers(base_dn, "(objectClass=computer)", mappings)
+        return Response(computers)
 
 
 # ==================== GRUPOS / OU ====================
@@ -374,13 +393,16 @@ class GroupList(APIView):
         if not server:
             return Response({"error": "Server not found"}, status=status.HTTP_404_NOT_FOUND)
         filter_str = request.query_params.get("filter", "(objectClass=group)")
-        _get_connector().connect(server)
-        try:
-            groups = _get_connector().search_groups(base_dn, filter_str)
-            serializer = LDAPGroupSerializer([g.to_dict() for g in groups], many=True)
-            return Response(serializer.data)
-        finally:
-            _get_connector().disconnect()
+        search = request.query_params.get("search", "")
+        if search:
+            sf = _build_search_filter(search, ["cn", "name", "description"])
+            if sf:
+                filter_str = f"(&{filter_str}{sf})"
+        conn = _get_connector()
+        conn.connect(server)
+        groups = conn.search_groups(base_dn, filter_str)
+        serializer = LDAPGroupSerializer([g.to_dict() for g in groups], many=True)
+        return Response(serializer.data)
 
 
 class OUList(APIView):
@@ -391,13 +413,13 @@ class OUList(APIView):
             base_dn = server.base_dn
         if not server:
             return Response({"error": "Server not found"}, status=status.HTTP_404_NOT_FOUND)
-        _get_connector().connect(server)
-        try:
-            ous = _get_connector().search_ous(base_dn)
-            serializer = OUSerializer(ous, many=True)
-            return Response(serializer.data)
-        finally:
-            _get_connector().disconnect()
+        conn = _get_connector()
+        conn.connect(server)
+        cache_key = _cache_key("ous", server_id, base_dn)
+        ous = _get_cached_or_fetch(cache_key,
+            lambda: conn.search_ous(base_dn))
+        serializer = OUSerializer(ous, many=True)
+        return Response(serializer.data)
 
 
 # ==================== AUDITORIA ====================
@@ -730,6 +752,7 @@ class AuthConfigView(APIView):
             config.ldap_server = None
         config.ldap_bind_template = data.get("ldap_bind_template", config.ldap_bind_template)
         config.save()
+        cache.delete(AUTH_CACHE_KEY)
         log_audit(request.user, "UPDATE", "AuthConfig", "config",
                   f"Configuracion de autenticacion actualizada: modo={config.mode}")
         return Response({
@@ -816,24 +839,23 @@ class DashboardMetrics(APIView):
         total_servers = servers.count()
         online_count = 0
         server_list = []
+        conn = _get_connector()
         for s in servers:
             server_entity = _repo.find_by_id(s.id)
-            ok = server_entity and _get_connector().test_connection(server_entity)
+            ok = server_entity and conn.test_connection(server_entity)
             if ok:
                 online_count += 1
 
             users_total = users_enabled = users_disabled = 0
             if ok and server_entity and server_entity.base_dn:
                 try:
-                    _get_connector().connect(server_entity)
-                    stats = _get_connector().get_user_stats(server_entity.base_dn, "(objectClass=user)")
+                    conn.connect(server_entity)
+                    stats = conn.get_user_stats(server_entity.base_dn, "(objectClass=user)")
                     users_total = stats["total"]
                     users_enabled = stats["enabled"]
                     users_disabled = stats["disabled"]
-                except Exception as e:
+                except Exception:
                     pass
-                finally:
-                    _get_connector().disconnect()
 
             server_list.append({
                 "id": s.id, "name": s.name, "host": s.host, "port": s.port,

@@ -1,6 +1,6 @@
 from typing import Optional
 from domain.entities.ldap_server import LDAPServer
-from infrastructure.ldap.proxy import ConnectionProxy
+from infrastructure.ldap.proxy import ConnectionProxy, LDAPProxyError
 
 
 class LDAPConnectionPool:
@@ -8,11 +8,16 @@ class LDAPConnectionPool:
         self._connections: dict[str, ConnectionProxy] = {}
 
     def get_or_create(self, server: LDAPServer) -> ConnectionProxy:
-        if server.id not in self._connections:
+        proxy = self._connections.get(server.id)
+        if proxy is None:
             proxy = ConnectionProxy(server)
             proxy.connect()
             self._connections[server.id] = proxy
-        return self._connections[server.id]
+            return proxy
+        if not proxy.is_alive():
+            proxy.disconnect()
+            proxy.connect()
+        return proxy
 
     def remove(self, server_id: str) -> None:
         if server_id in self._connections:

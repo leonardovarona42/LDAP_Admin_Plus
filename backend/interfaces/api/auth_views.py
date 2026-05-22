@@ -5,8 +5,11 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework import serializers
 
+from django.core.cache import cache
+
 from ldap3 import Server, Connection, ALL
 from ldap3.core.exceptions import LDAPException, LDAPBindError
+from ldap3.utils.conv import escape_filter_chars
 
 from infrastructure.persistence.models import AuditLog, UserProfile, AuthConfig, LDAPServerModel, LDAPRoleMapping
 
@@ -19,10 +22,14 @@ def _log(user, action, details="", success=True):
         )
 
 
+def _escape(s):
+    return escape_filter_chars(s)
+
+
 def _ldap_authenticate(username, password):
     """Try LDAP auth using AuthConfig. Returns Django user or None."""
     try:
-        config = AuthConfig.objects.first()
+        config = cache.get_or_set("auth_config", lambda: AuthConfig.objects.first(), 60)
         if not config or config.mode == "db":
             return None
         if not config.ldap_server:
@@ -42,7 +49,7 @@ def _ldap_authenticate(username, password):
         try:
             conn.search(
                 search_base=srv.base_dn,
-                search_filter=f"(sAMAccountName={username})",
+                search_filter=f"(sAMAccountName={_escape(username)})",
                 search_scope="SUBTREE",
                 attributes=["memberOf"],
                 size_limit=1,
@@ -54,7 +61,10 @@ def _ldap_authenticate(username, password):
                     member_of = [str(m) for m in (raw if isinstance(raw, list) else [raw])]
         except Exception:
             pass
-    conn.unbind()
+    try:
+        conn.unbind()
+    except Exception:
+        pass
 
     user, _ = User.objects.get_or_create(username=username)
     profile, _ = UserProfile.objects.get_or_create(user=user)

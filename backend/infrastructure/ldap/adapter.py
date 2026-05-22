@@ -8,30 +8,26 @@ from domain.entities.user import LDAPUser
 from domain.entities.group import LDAPGroup
 from domain.entities.ou import OrganizationalUnit
 from infrastructure.ldap.proxy import ConnectionProxy, LDAPProxyError
+from infrastructure.ldap.pool import LDAPConnectionPool
 
 
 class LDAPConnectorAdapter(LDAPConnectorPort):
-    def __init__(self):
+    def __init__(self, pool: Optional[LDAPConnectionPool] = None):
+        self._pool = pool or LDAPConnectionPool()
         self._proxy: Optional[ConnectionProxy] = None
-        self._current_server: Optional[LDAPServer] = None
 
     def _ensure_proxy(self, server: LDAPServer) -> ConnectionProxy:
-        if not self._proxy or self._current_server != server:
-            if self._proxy:
-                self._proxy.disconnect()
-            self._proxy = ConnectionProxy(server)
-            self._current_server = server
+        self._proxy = self._pool.get_or_create(server)
         return self._proxy
 
     def connect(self, server: LDAPServer) -> bool:
         proxy = self._ensure_proxy(server)
+        if not proxy.is_alive():
+            proxy.connect()
         return proxy.test()
 
     def disconnect(self) -> None:
-        if self._proxy:
-            self._proxy.disconnect()
-            self._proxy = None
-            self._current_server = None
+        self._proxy = None
 
     def test_connection(self, server: LDAPServer) -> bool:
         proxy = ConnectionProxy(server)

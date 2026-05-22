@@ -65,6 +65,17 @@ class ConnectionProxy:
             self.connect()
         return self._connection
 
+    def is_alive(self) -> bool:
+        if not self._connection or not self._connection.bound:
+            return False
+        try:
+            return self._connection.search(
+                search_base="", search_filter="(objectClass=*)",
+                search_scope="BASE", attributes=["1.1"], size_limit=1,
+            )
+        except LDAPException:
+            return False
+
     def test(self) -> bool:
         try:
             conn = self.connection
