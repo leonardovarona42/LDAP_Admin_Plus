@@ -38,7 +38,7 @@ export default function UsersPage() {
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { setPage(1); doLoad(1); }, [search, statusFilter]);
+  useEffect(() => { setPage(1); doLoad(1); }, [search, statusFilter, serverId]);
   useEffect(() => { if (page !== 1) doLoad(page); }, [page]);
 
   const createUser = async (e) => {

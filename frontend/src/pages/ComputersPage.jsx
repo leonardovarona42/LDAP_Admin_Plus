@@ -24,7 +24,7 @@ export default function ComputersPage() {
     computerService.list(serverId, params).then(r => setComputers(r.data)).catch(() => {}).finally(() => setLoading(false));
   };
 
-  useEffect(() => { load(); }, [search]);
+  useEffect(() => { load(); }, [search, serverId]);
 
   return (
     <div>

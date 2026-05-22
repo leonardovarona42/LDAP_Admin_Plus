@@ -14,10 +14,12 @@ export default function OUsPage() {
   const [ous, setOus] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+  const load = () => {
     setLoading(true);
     ouService.list(serverId, '').then(r => setOus(r.data)).catch(() => {}).finally(() => setLoading(false));
-  }, []);
+  };
+
+  useEffect(() => { load(); }, [serverId]);
 
   return (
     <div>

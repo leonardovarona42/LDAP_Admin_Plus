@@ -17,10 +17,12 @@ export default function GroupsPage() {
   const [groups, setGroups] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+  const load = () => {
     setLoading(true);
     groupService.list(serverId, '').then(r => setGroups(r.data)).catch(() => {}).finally(() => setLoading(false));
-  }, []);
+  };
+
+  useEffect(() => { load(); }, [serverId]);
 
   return (
     <div>
