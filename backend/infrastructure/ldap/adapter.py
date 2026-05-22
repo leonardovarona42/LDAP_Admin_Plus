@@ -22,10 +22,11 @@ OU_ATTRS = ["ou", "name", "description"]
 COMPUTER_ATTRS = ["cn", "operatingSystem", "dNSHostName", "description"]
 
 
-def _paged_search(proxy, base_dn, filter_str, attributes, search_scope=SUBTREE):
+def _paged_search(proxy, base_dn, filter_str, attributes, search_scope=SUBTREE, max_pages=100):
     """Realiza busqueda paginada acumulando todas las paginas."""
     all_entries = []
     cookie = None
+    page_count = 0
     while True:
         entries = proxy.search(
             base_dn, filter_str,
@@ -36,7 +37,8 @@ def _paged_search(proxy, base_dn, filter_str, attributes, search_scope=SUBTREE):
         )
         all_entries.extend(entries)
         cookie = proxy.last_paged_cookie
-        if not cookie:
+        page_count += 1
+        if not cookie or page_count >= max_pages:
             break
     return all_entries
 

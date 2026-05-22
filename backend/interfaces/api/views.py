@@ -834,49 +834,60 @@ class SolicitudDetail(APIView):
 # ==================== DASHBOARD / METRICAS ====================
 
 class DashboardMetrics(APIView):
-    def get(self, request):
-        from infrastructure.persistence.models import LDAPServerModel
-        servers = LDAPServerModel.objects.all()
-        total_servers = servers.count()
-        online_count = 0
-        server_list = []
-        conn = _get_connector()
-        for s in servers:
-            server_entity = _repo.find_by_id(s.id)
-            ok = server_entity and conn.test_connection(server_entity)
-            if ok:
-                online_count += 1
+    def _server_stats(self, server_model):
+        server_entity = _repo.find_by_id(server_model.id)
+        if not server_entity:
+            return {"id": server_model.id, "name": server_model.name, "status": "offline", "user_stats": {}}
+        status_key = f"server_status:{server_model.id}"
+        ok = cache.get(status_key)
+        if ok is None:
+            ok = _get_connector().test_connection(server_entity)
+            cache.set(status_key, ok, 60)
+        users_total = users_enabled = users_disabled = 0
+        if ok and server_entity.base_dn:
+            try:
+                conn = _get_connector()
+                conn.connect(server_entity)
+                stats = conn.get_user_stats(server_entity.base_dn, "(objectClass=user)")
+                users_total = stats["total"]
+                users_enabled = stats["enabled"]
+                users_disabled = stats["disabled"]
+            except Exception:
+                pass
+        return {
+            "id": server_model.id, "name": server_model.name,
+            "host": server_model.host, "port": server_model.port,
+            "status": "online" if ok else "offline",
+            "user_stats": {"total": users_total, "enabled": users_enabled, "disabled": users_disabled},
+        }
 
-            users_total = users_enabled = users_disabled = 0
-            if ok and server_entity and server_entity.base_dn:
+    def get(self, request):
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+        from infrastructure.persistence.models import LDAPServerModel
+        cache_key = "dashboard_metrics"
+        cached = cache.get(cache_key)
+        if cached:
+            return Response(cached)
+        servers = list(LDAPServerModel.objects.all())
+        server_list = []
+        with ThreadPoolExecutor(max_workers=3) as executor:
+            futures = {executor.submit(self._server_stats, s): s for s in servers}
+            for future in as_completed(futures):
                 try:
-                    conn.connect(server_entity)
-                    stats = conn.get_user_stats(server_entity.base_dn, "(objectClass=user)")
-                    users_total = stats["total"]
-                    users_enabled = stats["enabled"]
-                    users_disabled = stats["disabled"]
+                    server_list.append(future.result(timeout=30))
                 except Exception:
                     pass
-
-            server_list.append({
-                "id": s.id, "name": s.name, "host": s.host, "port": s.port,
-                "status": "online" if ok else "offline",
-                "user_stats": {
-                    "total": users_total,
-                    "enabled": users_enabled,
-                    "disabled": users_disabled,
-                },
-            })
-
+        online_count = sum(1 for s in server_list if s["status"] == "online")
         total_system_users = User.objects.count()
         events_24h = AuditLog.objects.filter(
             created_at__gte=timezone.now() - timedelta(hours=24)).count()
-
-        return Response({
-            "total_servers": total_servers,
+        data = {
+            "total_servers": len(servers),
             "online_servers": online_count,
-            "offline_servers": total_servers - online_count,
+            "offline_servers": len(servers) - online_count,
             "total_system_users": total_system_users,
             "events_24h": events_24h,
             "servers": server_list,
-        })
+        }
+        cache.set(cache_key, data, 60)
+        return Response(data)
